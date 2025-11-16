@@ -259,6 +259,8 @@ async def edit_item_rarity(interaction: discord.Interaction, item: str, rarity: 
 
 
 # --- Bot Events ---
+
+# --- Bot Events ---
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
@@ -267,6 +269,19 @@ async def on_ready():
         print(f"Synced {len(synced)} slash commands.")
     except Exception as e:
         print(f"Failed to sync commands: {e}")
+
+# DM welcome/help message
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+    if isinstance(message.channel, discord.DMChannel):
+        help_text = (
+            "👋 Hi! I'm Tactas RNG. You can use all my slash commands here in DMs, just like in a server!\n"
+            "Try /pull, /inventory, /achievements, and more.\n"
+            "If you need help, use /help or invite me to your server."
+        )
+        await message.channel.send(help_text)
 
 
 @tree.command(name="pull", description="Pull a random item!")
@@ -426,12 +441,57 @@ async def admin_set_pulls(interaction: discord.Interaction, user_id: int, pulls:
     await interaction.response.send_message(embed=embed)
 
 # To run the bot, put your token in a .env file as DISCORD_TOKEN=your_token_here
+
+import sys
+def cli_main():
+    print("Tactas RNG CLI Mode\nType 'pull' to pull an item, 'inv' for inventory, 'ach' for achievements, 'exit' to quit.")
+    user_id = 1  # Local user
+    username = "localuser"
+    c.execute("INSERT OR IGNORE INTO users (user_id, username) VALUES (?, ?)", (user_id, username))
+    while True:
+        cmd = input("> ").strip().lower()
+        if cmd == "pull":
+            item, rarity = get_weighted_item()
+            c.execute("UPDATE users SET pulls = pulls + 1 WHERE user_id = ?", (user_id,))
+            c.execute("SELECT amount FROM inventory WHERE user_id = ? AND item = ?", (user_id, item))
+            row = c.fetchone()
+            if row:
+                c.execute("UPDATE inventory SET amount = amount + 1 WHERE user_id = ? AND item = ?", (user_id, item))
+            else:
+                c.execute("INSERT INTO inventory (user_id, item, rarity, amount) VALUES (?, ?, ?, 1)", (user_id, item, rarity))
+            conn.commit()
+            print(f"You pulled: {item} ({rarity})")
+        elif cmd == "inv":
+            c.execute("SELECT item, rarity, amount FROM inventory WHERE user_id = ?", (user_id,))
+            items = c.fetchall()
+            if not items:
+                print("Inventory is empty.")
+            else:
+                for item, rarity, amount in items:
+                    print(f"{item} ({rarity}) x{amount}")
+        elif cmd == "ach":
+            user_achievements = get_user_achievements(user_id)
+            if not user_achievements:
+                print("No achievements yet.")
+            else:
+                for aid, name, desc, _ in ACHIEVEMENTS:
+                    if aid in user_achievements:
+                        print(f"🏅 {name}: {desc}")
+        elif cmd == "exit":
+            print("Goodbye!")
+            break
+        else:
+            print("Commands: pull, inv, ach, exit")
+
 if __name__ == "__main__":
-    import os
-    from dotenv import load_dotenv
-    load_dotenv()
-    token = os.getenv("DISCORD_TOKEN")
-    if not token:
-        print("Please set DISCORD_TOKEN in your .env file.")
+    if len(sys.argv) > 1 and sys.argv[1] == "--cli":
+        cli_main()
     else:
-        bot.run(token)
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        token = os.getenv("DISCORD_TOKEN")
+        if not token:
+            print("Please set DISCORD_TOKEN in your .env file.")
+        else:
+            bot.run(token)
